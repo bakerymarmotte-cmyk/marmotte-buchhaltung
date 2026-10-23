@@ -1,19 +1,15 @@
 // Firebase-Konfiguration für Marmotte Buchhaltung
-// ------------------------------------------------------------------
-// HIER die Werte aus der Firebase-Konsole eintragen:
-// Projekteinstellungen → Allgemein → "Meine Apps" → Web-App → SDK-Konfiguration
-// ------------------------------------------------------------------
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 export const firebaseConfig = {
-  apiKey: "HIER_EINTRAGEN",
+  apiKey: "AIzaSyBIrahlMfF3Z2jEZ4pcBpNreeYTYDhnx3A",
   authDomain: "marmotte-buchhaltung.firebaseapp.com",
   projectId: "marmotte-buchhaltung",
   storageBucket: "marmotte-buchhaltung.firebasestorage.app",
-  messagingSenderId: "HIER_EINTRAGEN",
-  appId: "HIER_EINTRAGEN"
+  messagingSenderId: "1066516830753",
+  appId: "1:1066516830753:web:607b6cb05320fee6ed6160"
 };
 
 const app = initializeApp(firebaseConfig);
