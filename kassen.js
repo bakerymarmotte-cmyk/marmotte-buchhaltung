@@ -40,7 +40,7 @@ export function initKassen() {
         await updateDoc(doc(db, "kassen", bearbeiteId), { name, updatedAt: serverTimestamp() });
         toast("Kasse umbenannt");
       } else {
-        await addDoc(collection(db, "kassen"), { name, active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        await addDoc(collection(db, "kassen"), { name, active: true, auszahlungen: false, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         toast("Kasse angelegt");
       }
       formularLeeren();
@@ -63,6 +63,7 @@ export function initKassen() {
             ${k.active === false ? '<span class="li-sub">inaktiv</span>' : ""}
           </div>
           <div class="li-actions">
+            <button class="btn btn-secondary btn-small ${k.auszahlungen === true ? "is-on" : ""}" data-ausz="${k.id}" title="Auszahlungen bei dieser Kasse erfassen"><i data-icon="hand-coins" data-size="14"></i> ${k.auszahlungen === true ? "Ausz. an" : "Ausz. aus"}</button>
             <button class="icon-btn" data-edit="${k.id}" title="Umbenennen"><i data-icon="pencil" data-size="15"></i></button>
             <button class="btn btn-secondary btn-small" data-toggle="${k.id}">${k.active === false ? "Aktivieren" : "Deaktivieren"}</button>
           </div>
@@ -78,6 +79,18 @@ export function initKassen() {
         cancelBtn.style.display = "inline-flex";
         errorEl.textContent = "";
         window.scrollTo({ top: 0, behavior: "smooth" });
+      })
+    );
+    listEl.querySelectorAll("[data-ausz]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const k = kassen.find((x) => x.id === b.dataset.ausz);
+        try {
+          await updateDoc(doc(db, "kassen", k.id), { auszahlungen: k.auszahlungen !== true, updatedAt: serverTimestamp() });
+          toast(k.auszahlungen !== true ? `Auszahlungen bei «${k.name}» aktiviert` : `Auszahlungen bei «${k.name}» ausgeschaltet`);
+        } catch (err) {
+          console.error(err);
+          toast("Ändern fehlgeschlagen");
+        }
       })
     );
     listEl.querySelectorAll("[data-toggle]").forEach((b) =>
