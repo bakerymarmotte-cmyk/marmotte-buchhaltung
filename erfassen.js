@@ -85,6 +85,18 @@ export function initErfassen(session) {
     el.textContent = sum ? `Total ${chf(sum)}` : "";
   }
 
+  // Bar-Umsatz = Brutto − SumUp, wird beim Tippen laufend angezeigt
+  function barAnzeigen(card) {
+    const el = card.querySelector(".bar-wert");
+    if (!el) return;
+    const brutto = parseChf(card.querySelector('[data-feld="brutto"]').value);
+    const sumup = parseChf(card.querySelector('[data-feld="sumup"]').value);
+    if (brutto === null || Number.isNaN(brutto) || Number.isNaN(sumup)) { el.textContent = "–"; el.classList.remove("neg"); return; }
+    const bar = brutto - (sumup || 0);
+    el.textContent = chf(bar);
+    el.classList.toggle("neg", bar < 0);
+  }
+
   function render() {
     const aktive = kassen.filter((k) => k.active !== false || vorhanden[k.id]);
     document.getElementById("keine-kassen").style.display = aktive.length ? "none" : "block";
@@ -107,6 +119,7 @@ export function initErfassen(session) {
                 <input type="text" inputmode="decimal" data-feld="${f.key}" value="${toInput(v?.[f.key])}" placeholder="0.00">
               </span>
             </label>`).join("")}
+          <div class="bar-row"><span>Bar-Umsatz <span class="bar-formel">(Brutto − SumUp)</span></span><strong class="mono bar-wert"></strong></div>
           ${mitAusz ? `
             <div class="ausz-block">
               <div class="ausz-head"><span>Auszahlungen</span><span class="ausz-total mono"></span></div>
@@ -133,12 +146,14 @@ export function initErfassen(session) {
 
     listEl.innerHTML = kassenHtml + bankHtml;
     listEl.querySelectorAll(".kasse-card").forEach(auszahlungTotalAnzeigen);
+    listEl.querySelectorAll(".kasse-card[data-kasse]").forEach(barAnzeigen);
   }
 
   // Ereignisse in der Liste (einmal registriert, gilt auch für neu gerenderte Elemente)
   listEl.addEventListener("focusin", (e) => { if (e.target.matches(".betrag-input input")) e.target.select(); });
   listEl.addEventListener("input", (e) => {
     if (e.target.matches(".ausz-wert")) auszahlungTotalAnzeigen(e.target.closest(".kasse-card"));
+    if (e.target.matches("[data-feld]")) barAnzeigen(e.target.closest(".kasse-card"));
   });
   listEl.addEventListener("click", (e) => {
     const neu = e.target.closest(".ausz-neu");
