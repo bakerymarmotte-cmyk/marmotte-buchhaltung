@@ -85,14 +85,16 @@ export function initErfassen(session) {
     el.textContent = sum ? `Total ${chf(sum)}` : "";
   }
 
-  // Bar-Umsatz = Brutto − SumUp, wird beim Tippen laufend angezeigt
+  // Bar-Tagesumsatz = Brutto − SumUp − Auszahlungen, wird beim Tippen laufend angezeigt
   function barAnzeigen(card) {
     const el = card.querySelector(".bar-wert");
     if (!el) return;
     const brutto = parseChf(card.querySelector('[data-feld="brutto"]').value);
     const sumup = parseChf(card.querySelector('[data-feld="sumup"]').value);
     if (brutto === null || Number.isNaN(brutto) || Number.isNaN(sumup)) { el.textContent = "–"; el.classList.remove("neg"); return; }
-    const bar = brutto - (sumup || 0);
+    let ausz = 0;
+    card.querySelectorAll(".ausz-wert").forEach((i) => { const r = parseChf(i.value); if (r > 0) ausz += r; });
+    const bar = brutto - (sumup || 0) - ausz;
     el.textContent = chf(bar);
     el.classList.toggle("neg", bar < 0);
   }
@@ -119,13 +121,13 @@ export function initErfassen(session) {
                 <input type="text" inputmode="decimal" data-feld="${f.key}" value="${toInput(v?.[f.key])}" placeholder="0.00">
               </span>
             </label>`).join("")}
-          <div class="bar-row"><span>Bar-Umsatz <span class="bar-formel">(Brutto − SumUp)</span></span><strong class="mono bar-wert"></strong></div>
           ${mitAusz ? `
             <div class="ausz-block">
               <div class="ausz-head"><span>Auszahlungen</span><span class="ausz-total mono"></span></div>
               <div class="ausz-list">${(v?.auszahlungen || []).map(auszahlungZeile).join("")}</div>
               <button type="button" class="btn btn-secondary btn-small ausz-neu"><i data-icon="plus" data-size="14"></i> Auszahlung</button>
             </div>` : ""}
+          <div class="bar-row"><span>Bar-Tagesumsatz <span class="bar-formel">(Brutto − SumUp${mitAusz ? " − Auszahlungen" : ""})</span></span><strong class="mono bar-wert"></strong></div>
         </div>`;
       })
       .join("");
@@ -153,7 +155,7 @@ export function initErfassen(session) {
   listEl.addEventListener("focusin", (e) => { if (e.target.matches(".betrag-input input")) e.target.select(); });
   listEl.addEventListener("input", (e) => {
     if (e.target.matches(".ausz-wert")) auszahlungTotalAnzeigen(e.target.closest(".kasse-card"));
-    if (e.target.matches("[data-feld]")) barAnzeigen(e.target.closest(".kasse-card"));
+    if (e.target.matches("[data-feld], .ausz-wert")) barAnzeigen(e.target.closest(".kasse-card"));
   });
   listEl.addEventListener("click", (e) => {
     const neu = e.target.closest(".ausz-neu");
@@ -169,6 +171,7 @@ export function initErfassen(session) {
       const card = weg.closest(".kasse-card");
       weg.closest(".ausz-row").remove();
       auszahlungTotalAnzeigen(card);
+      barAnzeigen(card);
     }
   });
 

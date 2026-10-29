@@ -341,6 +341,13 @@ h3.section-title { font-size: 16px; font-weight: 600; margin: 0 0 14px; }
 .report-table tbody tr.day-start:first-child td { border-top: none; }
 .report-table tr.ausz-detail td { font-size: 12.5px; color: var(--m-muted); padding-top: 3px; padding-bottom: 3px; }
 .ausz-detail-text { padding-left: 24px !important; }
+.report-table td.strong { font-weight: 600; }
+.report-table td.neg, .abgleich .neg strong { color: var(--m-danger); }
+.report-table td.pos, .abgleich .pos strong { color: var(--m-success); }
+.abgleich { margin-top: 14px; background: var(--m-card); border: 1px solid var(--m-border); border-radius: var(--m-radius-lg); padding: 12px 16px; }
+.abgleich div { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; color: var(--m-muted); }
+.abgleich strong { color: var(--m-text); }
+.abgleich .abgleich-diff { border-top: 1px solid var(--m-border); margin-top: 4px; padding-top: 8px; font-weight: 600; }
 .report-table tr.bank-row td { font-weight: 600; background: var(--m-surface-2); }
 @media (min-width: 900px) { main { max-width: 820px; } }
 
@@ -367,4 +374,8 @@ h3.section-title { font-size: 16px; font-weight: 600; margin: 0 0 14px; }
   .report-table tr.ausz-detail td { font-size: 8.5pt; color: #333; padding-top: 1px; padding-bottom: 1px; }
   .report-table tr.bank-row td { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .report-table tr.day-start td { border-top: 1.5px solid #888; }
+  .report-table td.neg, .abgleich .neg strong { color: #000 !important; font-weight: 700; }
+  .report-table td.pos, .abgleich .pos strong { color: #000 !important; }
+  .abgleich { border: 1px solid #999; border-radius: 6px; padding: 6px 10px; margin-top: 10px; page-break-inside: avoid; width: 60%; margin-left: auto; }
+  .abgleich div { font-size: 10pt; color: #000; padding: 2px 0; }
 }
