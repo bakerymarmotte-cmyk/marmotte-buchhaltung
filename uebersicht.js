@@ -108,9 +108,12 @@ export function initUebersicht() {
       // Tageszeile: Bar aller Kassen gegen die Bankeinzahlung des Tages
       if (mitBank) {
         const barTag = tagRows.reduce((s, r) => s + bar(r), 0);
+        const sumupTag = tagRows.reduce((s, r) => s + (r.sumup || 0), 0);
         const bankTag = bank[tag] || 0;
         html += `<tr class="bank-row ${ersteZeile ? "day-start" : ""}">
-          ${datumZelle()}<td colspan="${vorne - 1 + 3}">Tagestotal · Einzahlung Bank</td>
+          ${datumZelle()}<td colspan="${vorne - 1 + 1}">Tagestotal</td>
+          <td class="r mono">${chf(sumupTag)}</td>
+          ${leer}
           <td class="r mono">${chf(barTag)}</td>
           <td class="r mono">${bank[tag] != null ? chf(bankTag) : "–"}</td>
           ${diffZelle(bankTag - barTag)}
