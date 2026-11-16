@@ -46,6 +46,28 @@ async function start() {
       toast("Kassen konnten nicht geladen werden.");
     }
   );
+
+  // Abgeschlossene Monate live laden (Dokument-ID = "YYYY-MM")
+  onSnapshot(
+    collection(db, "monatsabschluesse"),
+    (snap) => {
+      const map = {};
+      snap.docs.forEach((d) => {
+        const data = d.data({ serverTimestamps: "estimate" });
+        const am = data.abgeschlossenAm?.toDate ? data.abgeschlossenAm.toDate() : new Date();
+        map[d.id] = {
+          ...data,
+          datumText: am.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" }),
+        };
+      });
+      erfassen.setAbschluesse(map);
+      uebersicht.setAbschluesse(map);
+    },
+    (err) => {
+      console.error(err);
+      toast("Monatsabschlüsse konnten nicht geladen werden.");
+    }
+  );
 }
 
 function setupNav() {

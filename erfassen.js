@@ -14,44 +14,62 @@ const MAX_AUSZAHLUNGEN = 30;
 
 // Ein Eintrag pro Kasse und Tag: tagesabschluesse/<kasseId>_<YYYY-MM-DD>
 // Die Bankeinzahlung gibt es einmal pro Tag:  tagesbank/<YYYY-MM-DD>
+// Jede Kasse und die Bank haben einen eigenen Speichern-Knopf. So überschreibt
+// niemand die Eingaben einer anderen Kasse, wenn zwei Personen gleichzeitig erfassen.
 const docId = (kasseId, datum) => `${kasseId}_${datum}`;
 
 export function initErfassen(session) {
   let kassen = [];
-  let vorhanden = {};      // kasseId → gespeicherter Eintrag für den gewählten Tag
+  let vorhanden = {};       // kasseId → gespeicherter Eintrag für den gewählten Tag
   let bankVorhanden = null; // gespeicherte Bankeinzahlung des Tages
+  let abschluesse = {};     // "YYYY-MM" → Monatsabschluss (live aus app.js)
+  let aktuellerTag = "";    // Tag, der gerade angezeigt wird
   let laedt = false;
   let ersterLadevorgang = true;
 
   const tagEl = document.getElementById("tag");
   const listEl = document.getElementById("erfassen-list");
   const errorEl = document.getElementById("erfassen-error");
-  const saveBar = document.getElementById("save-bar");
-  const saveBtn = document.getElementById("erfassen-speichern");
+  const lockEl = document.getElementById("erfassen-gesperrt");
+  const hinweisEl = document.getElementById("erfassen-hinweis");
 
   tagEl.value = isoDate();
   tagEl.max = isoDate();
+
+  const gesperrt = () => abschluesse[aktuellerTag.slice(0, 7)] || null;
+
+  // Nicht gespeicherte Eingaben vor dem Tageswechsel melden
+  function darfWechseln() {
+    if (!listEl.querySelector(".kasse-card.dirty")) return true;
+    return confirm("Es gibt Eingaben, die noch nicht gespeichert sind. Trotzdem den Tag wechseln? Die Eingaben gehen dann verloren.");
+  }
 
   function verschiebeTag(delta) {
     const [y, m, d] = tagEl.value.split("-").map(Number);
     const neu = new Date(y, m - 1, d + delta);
     if (isoDate(neu) > isoDate()) return; // nicht in die Zukunft
+    if (!darfWechseln()) return;
     tagEl.value = isoDate(neu);
     ladeTag();
   }
   document.getElementById("tag-zurueck").addEventListener("click", () => verschiebeTag(-1));
   document.getElementById("tag-vor").addEventListener("click", () => verschiebeTag(1));
-  tagEl.addEventListener("change", ladeTag);
+  tagEl.addEventListener("change", () => {
+    if (!tagEl.value) return;
+    if (!darfWechseln()) { tagEl.value = aktuellerTag; return; }
+    ladeTag();
+  });
 
   async function ladeTag() {
     if (!tagEl.value) return;
-    document.getElementById("tag-label").textContent = deDate(tagEl.value);
+    aktuellerTag = tagEl.value;
+    document.getElementById("tag-label").textContent = deDate(aktuellerTag);
     laedt = true;
     errorEl.textContent = "";
     try {
       const [snap, bankSnap] = await Promise.all([
-        getDocs(query(collection(db, "tagesabschluesse"), where("datum", "==", tagEl.value))),
-        getDoc(doc(db, "tagesbank", tagEl.value)),
+        getDocs(query(collection(db, "tagesabschluesse"), where("datum", "==", aktuellerTag))),
+        getDoc(doc(db, "tagesbank", aktuellerTag)),
       ]);
       vorhanden = {};
       snap.docs.forEach((d) => { vorhanden[d.data().kasseId] = d.data(); });
@@ -65,15 +83,74 @@ export function initErfassen(session) {
     }
   }
 
-  // ---------- Auszahlungen ----------
-  function auszahlungZeile(a = {}) {
+  // ---------- Bausteine ----------
+  function auszahlungZeile(a = {}, zu = false) {
     return `
       <div class="ausz-row">
-        <input type="text" class="ausz-text" maxlength="80" placeholder="Wofür? z.B. Einkauf Migros" value="${esc(a.text || "")}">
+        <input type="text" class="ausz-text" maxlength="80" placeholder="Wofür? z.B. Einkauf Migros" value="${esc(a.text || "")}"${zu ? " disabled" : ""}>
         <span class="betrag-input ausz-betrag"><span class="cur">CHF</span>
-          <input type="text" inputmode="decimal" class="ausz-wert" value="${toInput(a.betrag)}" placeholder="0.00">
+          <input type="text" inputmode="decimal" class="ausz-wert" value="${toInput(a.betrag)}" placeholder="0.00"${zu ? " disabled" : ""}>
         </span>
-        <button type="button" class="icon-btn ausz-weg" title="Auszahlung entfernen" aria-label="Auszahlung entfernen"><i data-icon="x" data-size="15"></i></button>
+        ${zu ? "" : '<button type="button" class="icon-btn ausz-weg" title="Auszahlung entfernen" aria-label="Auszahlung entfernen"><i data-icon="x" data-size="15"></i></button>'}
+      </div>`;
+  }
+
+  function statusBadge(gespeichert) {
+    return `<span class="kc-status">${gespeichert ? '<span class="saved-badge"><i data-icon="circle-check" data-size="14"></i> gespeichert</span>' : ""}</span>`;
+  }
+
+  function fussHtml(zu) {
+    if (zu) return "";
+    return `
+      <div class="kc-foot">
+        <div class="error-text kc-error"></div>
+        <button type="button" class="btn btn-primary btn-small kc-save"><i data-icon="save" data-size="14"></i> Speichern</button>
+      </div>`;
+  }
+
+  function kasseHtml(k) {
+    const v = vorhanden[k.id];
+    const zu = !!gesperrt();
+    const mitAusz = k.auszahlungen === true || (v?.auszahlungen?.length > 0);
+    return `
+      <div class="card kasse-card" data-kasse="${k.id}">
+        <div class="kc-head">
+          <strong>${esc(k.name)}</strong>
+          ${statusBadge(!!v)}
+        </div>
+        ${FELDER.map((f) => `
+          <label class="betrag-row">
+            <span>${f.label}</span>
+            <span class="betrag-input"><span class="cur">CHF</span>
+              <input type="text" inputmode="decimal" data-feld="${f.key}" value="${toInput(v?.[f.key])}" placeholder="0.00"${zu ? " disabled" : ""}>
+            </span>
+          </label>`).join("")}
+        ${mitAusz ? `
+          <div class="ausz-block">
+            <div class="ausz-head"><span>Auszahlungen</span><span class="ausz-total mono"></span></div>
+            <div class="ausz-list">${(v?.auszahlungen || []).map((a) => auszahlungZeile(a, zu)).join("")}</div>
+            ${zu ? "" : '<button type="button" class="btn btn-secondary btn-small ausz-neu"><i data-icon="plus" data-size="14"></i> Auszahlung</button>'}
+          </div>` : ""}
+        <div class="bar-row"><span>Bar-Tagesumsatz <span class="bar-formel">(Brutto − SumUp${mitAusz ? " − Auszahlungen" : ""})</span></span><strong class="mono bar-wert"></strong></div>
+        ${fussHtml(zu)}
+      </div>`;
+  }
+
+  function bankHtml() {
+    const zu = !!gesperrt();
+    return `
+      <div class="card kasse-card bank-card" data-bank="1">
+        <div class="kc-head">
+          <strong><i data-icon="banknote" data-size="16"></i> Bank</strong>
+          ${statusBadge(!!bankVorhanden)}
+        </div>
+        <label class="betrag-row">
+          <span>Einzahlung Bank (ganzer Tag)</span>
+          <span class="betrag-input"><span class="cur">CHF</span>
+            <input type="text" inputmode="decimal" class="bank-wert" value="${toInput(bankVorhanden?.bank)}" placeholder="0.00"${zu ? " disabled" : ""}>
+          </span>
+        </label>
+        ${fussHtml(zu)}
       </div>`;
   }
 
@@ -99,63 +176,48 @@ export function initErfassen(session) {
     el.classList.toggle("neg", bar < 0);
   }
 
+  function karteVorbereiten(card) {
+    auszahlungTotalAnzeigen(card);
+    if (card.dataset.kasse) barAnzeigen(card);
+  }
+
   function render() {
     const aktive = kassen.filter((k) => k.active !== false || vorhanden[k.id]);
     document.getElementById("keine-kassen").style.display = aktive.length ? "none" : "block";
-    saveBar.style.display = aktive.length ? "block" : "none";
+    hinweisEl.style.display = aktive.length && !gesperrt() ? "block" : "none";
 
-    const kassenHtml = aktive
-      .map((k) => {
-        const v = vorhanden[k.id];
-        const mitAusz = k.auszahlungen === true || (v?.auszahlungen?.length > 0);
-        return `
-        <div class="card kasse-card" data-kasse="${k.id}">
-          <div class="kc-head">
-            <strong>${esc(k.name)}</strong>
-            ${v ? '<span class="saved-badge"><i data-icon="circle-check" data-size="14"></i> gespeichert</span>' : ""}
-          </div>
-          ${FELDER.map((f) => `
-            <label class="betrag-row">
-              <span>${f.label}</span>
-              <span class="betrag-input"><span class="cur">CHF</span>
-                <input type="text" inputmode="decimal" data-feld="${f.key}" value="${toInput(v?.[f.key])}" placeholder="0.00">
-              </span>
-            </label>`).join("")}
-          ${mitAusz ? `
-            <div class="ausz-block">
-              <div class="ausz-head"><span>Auszahlungen</span><span class="ausz-total mono"></span></div>
-              <div class="ausz-list">${(v?.auszahlungen || []).map(auszahlungZeile).join("")}</div>
-              <button type="button" class="btn btn-secondary btn-small ausz-neu"><i data-icon="plus" data-size="14"></i> Auszahlung</button>
-            </div>` : ""}
-          <div class="bar-row"><span>Bar-Tagesumsatz <span class="bar-formel">(Brutto − SumUp${mitAusz ? " − Auszahlungen" : ""})</span></span><strong class="mono bar-wert"></strong></div>
-        </div>`;
-      })
-      .join("");
+    const lock = gesperrt();
+    if (lock) {
+      lockEl.style.display = "flex";
+      lockEl.querySelector(".lock-text").textContent =
+        `Dieser Monat ist abgeschlossen${lock.datumText ? ` (am ${lock.datumText})` : ""}. Die Einträge können nicht mehr geändert werden. Wieder öffnen kann man ihn unter «Übersicht & Druck».`;
+    } else {
+      lockEl.style.display = "none";
+    }
 
-    const bankHtml = aktive.length ? `
-      <div class="card kasse-card bank-card">
-        <div class="kc-head">
-          <strong><i data-icon="banknote" data-size="16"></i> Bank</strong>
-          ${bankVorhanden ? '<span class="saved-badge"><i data-icon="circle-check" data-size="14"></i> gespeichert</span>' : ""}
-        </div>
-        <label class="betrag-row">
-          <span>Einzahlung Bank (ganzer Tag)</span>
-          <span class="betrag-input"><span class="cur">CHF</span>
-            <input type="text" inputmode="decimal" id="bank-wert" value="${toInput(bankVorhanden?.bank)}" placeholder="0.00">
-          </span>
-        </label>
-      </div>` : "";
-
-    listEl.innerHTML = kassenHtml + bankHtml;
-    listEl.querySelectorAll(".kasse-card").forEach(auszahlungTotalAnzeigen);
-    listEl.querySelectorAll(".kasse-card[data-kasse]").forEach(barAnzeigen);
+    listEl.innerHTML = aktive.map(kasseHtml).join("") + (aktive.length ? bankHtml() : "");
+    listEl.querySelectorAll(".kasse-card").forEach(karteVorbereiten);
   }
 
-  // Ereignisse in der Liste (einmal registriert, gilt auch für neu gerenderte Elemente)
+  // Nur eine Karte neu zeichnen (die Eingaben in den anderen Karten bleiben stehen)
+  function karteNeu(card, html) {
+    card.outerHTML = html;
+  }
+
+  function alsGeaendert(card) {
+    if (card.classList.contains("dirty")) return;
+    card.classList.add("dirty");
+    card.querySelector(".kc-status").innerHTML = '<span class="dirty-badge">nicht gespeichert</span>';
+  }
+
+  // Ereignisse in der Liste (einmal registriert, gilt auch für neu gezeichnete Karten)
   listEl.addEventListener("focusin", (e) => { if (e.target.matches(".betrag-input input")) e.target.select(); });
   listEl.addEventListener("input", (e) => {
-    if (e.target.matches(".ausz-wert")) auszahlungTotalAnzeigen(e.target.closest(".kasse-card"));
-    if (e.target.matches("[data-feld], .ausz-wert")) barAnzeigen(e.target.closest(".kasse-card"));
+    const card = e.target.closest(".kasse-card");
+    if (!card) return;
+    alsGeaendert(card);
+    if (e.target.matches(".ausz-wert")) auszahlungTotalAnzeigen(card);
+    if (e.target.matches("[data-feld], .ausz-wert")) barAnzeigen(card);
   });
   listEl.addEventListener("click", (e) => {
     const neu = e.target.closest(".ausz-neu");
@@ -170,103 +232,141 @@ export function initErfassen(session) {
     if (weg) {
       const card = weg.closest(".kasse-card");
       weg.closest(".ausz-row").remove();
+      alsGeaendert(card);
       auszahlungTotalAnzeigen(card);
       barAnzeigen(card);
+      return;
+    }
+    const save = e.target.closest(".kc-save");
+    if (save) {
+      const card = save.closest(".kasse-card");
+      if (card.dataset.bank) speichereBank(card, save);
+      else speichereKasse(card, save);
     }
   });
 
-  saveBtn.addEventListener("click", async () => {
-    if (laedt) return;
-    errorEl.textContent = "";
-    const datum = tagEl.value;
-    if (!datum) { errorEl.textContent = "Bitte ein Datum wählen."; return; }
+  // ---------- Speichern: eine Kasse ----------
+  async function speichereKasse(card, btn) {
+    if (laedt || gesperrt()) return;
+    const err = card.querySelector(".kc-error");
+    err.textContent = "";
+    const datum = aktuellerTag;
+    const kasse = kassen.find((k) => k.id === card.dataset.kasse);
 
-    // Eingaben einlesen und prüfen
-    const aktionen = [];
-    for (const card of listEl.querySelectorAll(".kasse-card[data-kasse]")) {
-      const kasse = kassen.find((k) => k.id === card.dataset.kasse);
-      const werte = {};
-      let leer = true;
-      for (const f of FELDER) {
-        const r = parseChf(card.querySelector(`[data-feld="${f.key}"]`).value);
-        if (Number.isNaN(r)) { errorEl.textContent = `${kasse.name}: «${f.label}» ist keine gültige Zahl.`; return; }
-        if (r !== null) leer = false;
-        werte[f.key] = r ?? 0;
-      }
-
-      const auszahlungen = [];
-      for (const row of card.querySelectorAll(".ausz-row")) {
-        const text = row.querySelector(".ausz-text").value.trim();
-        const betrag = parseChf(row.querySelector(".ausz-wert").value);
-        if (!text && betrag === null) continue; // leere Zeile ignorieren
-        if (Number.isNaN(betrag) || betrag === null || betrag <= 0) {
-          errorEl.textContent = `${kasse.name}: Auszahlung «${text || "ohne Text"}» braucht einen gültigen Betrag.`; return;
-        }
-        if (!text) { errorEl.textContent = `${kasse.name}: Bitte bei jeder Auszahlung angeben, wofür.`; return; }
-        auszahlungen.push({ text, betrag });
-      }
-      if (auszahlungen.length) leer = false;
-      werte.auszahlungen = auszahlungen;
-      werte.auszahlungenTotal = auszahlungen.reduce((s, a) => s + a.betrag, 0);
-
-      if (leer) {
-        if (vorhanden[kasse.id]) aktionen.push({ typ: "loeschen", kasse });
-      } else {
-        aktionen.push({ typ: "speichern", kasse, werte });
-      }
+    const werte = {};
+    let leer = true;
+    for (const f of FELDER) {
+      const r = parseChf(card.querySelector(`[data-feld="${f.key}"]`).value);
+      if (Number.isNaN(r)) { err.textContent = `«${f.label}» ist keine gültige Zahl.`; return; }
+      if (r !== null) leer = false;
+      werte[f.key] = r ?? 0;
     }
 
-    // Bankeinzahlung des Tages
-    let bankAktion = null;
-    const bankEl = document.getElementById("bank-wert");
-    if (bankEl) {
-      const bank = parseChf(bankEl.value);
-      if (Number.isNaN(bank)) { errorEl.textContent = "«Einzahlung Bank» ist keine gültige Zahl."; return; }
-      if (bank === null) { if (bankVorhanden) bankAktion = { typ: "loeschen" }; }
-      else bankAktion = { typ: "speichern", bank };
+    const auszahlungen = [];
+    for (const row of card.querySelectorAll(".ausz-row")) {
+      const text = row.querySelector(".ausz-text").value.trim();
+      const betrag = parseChf(row.querySelector(".ausz-wert").value);
+      if (!text && betrag === null) continue; // leere Zeile ignorieren
+      if (Number.isNaN(betrag) || betrag === null || betrag <= 0) {
+        err.textContent = `Auszahlung «${text || "ohne Text"}» braucht einen gültigen Betrag.`; return;
+      }
+      if (!text) { err.textContent = "Bitte bei jeder Auszahlung angeben, wofür."; return; }
+      auszahlungen.push({ text, betrag });
     }
+    if (auszahlungen.length) leer = false;
+    werte.auszahlungen = auszahlungen;
+    werte.auszahlungenTotal = auszahlungen.reduce((s, a) => s + a.betrag, 0);
 
-    if (!aktionen.length && !bankAktion) { errorEl.textContent = "Es wurde nichts eingegeben."; return; }
-    if ((aktionen.some((a) => a.typ === "loeschen") || bankAktion?.typ === "loeschen") &&
-        !confirm("Mindestens ein bisher gespeicherter Eintrag ist jetzt leer. Diesen Eintrag für diesen Tag löschen?")) return;
+    if (leer && !vorhanden[kasse.id]) { err.textContent = "Es wurde nichts eingegeben."; return; }
+    if (leer && !confirm(`Alle Felder von «${kasse.name}» sind leer. Den gespeicherten Eintrag für diesen Tag löschen?`)) return;
 
-    saveBtn.disabled = true;
+    btn.disabled = true;
     try {
-      const wer = session.profile.name || "";
-      for (const a of aktionen) {
-        const ref = doc(db, "tagesabschluesse", docId(a.kasse.id, datum));
-        if (a.typ === "loeschen") {
-          await deleteDoc(ref);
-        } else {
-          await setDoc(ref, {
-            kasseId: a.kasse.id,
-            kasseName: a.kasse.name,
-            datum,
-            ...a.werte,
-            updatedAt: serverTimestamp(),
-            updatedBy: wer,
-          });
-        }
+      const ref = doc(db, "tagesabschluesse", docId(kasse.id, datum));
+      if (leer) {
+        await deleteDoc(ref);
+        delete vorhanden[kasse.id];
+        toast(`${kasse.name}: Eintrag gelöscht`);
+      } else {
+        const daten = {
+          kasseId: kasse.id,
+          kasseName: kasse.name,
+          datum,
+          ...werte,
+          updatedAt: serverTimestamp(),
+          updatedBy: session.profile.name || "",
+        };
+        await setDoc(ref, daten);
+        vorhanden[kasse.id] = daten;
+        toast(`${kasse.name}: ${deDate(datum, false)} gespeichert`);
       }
-      if (bankAktion) {
-        const ref = doc(db, "tagesbank", datum);
-        if (bankAktion.typ === "loeschen") await deleteDoc(ref);
-        else await setDoc(ref, { datum, bank: bankAktion.bank, updatedAt: serverTimestamp(), updatedBy: wer });
+      if (datum !== aktuellerTag) return; // inzwischen anderer Tag gewählt
+      const alt = listEl.querySelector(`.kasse-card[data-kasse="${kasse.id}"]`);
+      if (alt) {
+        karteNeu(alt, kasseHtml(kasse));
+        karteVorbereiten(listEl.querySelector(`.kasse-card[data-kasse="${kasse.id}"]`));
       }
-      toast(`${deDate(datum, false)} gespeichert`);
-      await ladeTag();
-    } catch (err) {
-      console.error(err);
-      errorEl.textContent = "Speichern fehlgeschlagen. Bitte Verbindung prüfen und erneut versuchen.";
-    } finally {
-      saveBtn.disabled = false;
+    } catch (e) {
+      console.error(e);
+      err.textContent = istGesperrtFehler(e)
+        ? "Dieser Monat ist abgeschlossen. Speichern nicht möglich."
+        : "Speichern fehlgeschlagen. Bitte Verbindung prüfen und erneut versuchen.";
+      btn.disabled = false;
     }
-  });
+  }
+
+  // ---------- Speichern: Bankeinzahlung des Tages ----------
+  async function speichereBank(card, btn) {
+    if (laedt || gesperrt()) return;
+    const err = card.querySelector(".kc-error");
+    err.textContent = "";
+    const datum = aktuellerTag;
+    const bank = parseChf(card.querySelector(".bank-wert").value);
+    if (Number.isNaN(bank)) { err.textContent = "«Einzahlung Bank» ist keine gültige Zahl."; return; }
+    if (bank === null && !bankVorhanden) { err.textContent = "Es wurde nichts eingegeben."; return; }
+    if (bank === null && !confirm("Das Feld ist leer. Die gespeicherte Bankeinzahlung für diesen Tag löschen?")) return;
+
+    btn.disabled = true;
+    try {
+      const ref = doc(db, "tagesbank", datum);
+      if (bank === null) {
+        await deleteDoc(ref);
+        bankVorhanden = null;
+        toast("Bankeinzahlung gelöscht");
+      } else {
+        const daten = { datum, bank, updatedAt: serverTimestamp(), updatedBy: session.profile.name || "" };
+        await setDoc(ref, daten);
+        bankVorhanden = daten;
+        toast(`Bank: ${deDate(datum, false)} gespeichert`);
+      }
+      if (datum !== aktuellerTag) return;
+      const alt = listEl.querySelector(".bank-card");
+      if (alt) karteNeu(alt, bankHtml());
+    } catch (e) {
+      console.error(e);
+      err.textContent = istGesperrtFehler(e)
+        ? "Dieser Monat ist abgeschlossen. Speichern nicht möglich."
+        : "Speichern fehlgeschlagen. Bitte Verbindung prüfen und erneut versuchen.";
+      btn.disabled = false;
+    }
+  }
+
+  // Die Regeln lehnen Schreiben in abgeschlossenen Monaten ab
+  function istGesperrtFehler(e) {
+    return e?.code === "permission-denied" && !!gesperrt();
+  }
 
   return {
     setKassen(list) {
       kassen = list;
-      if (ersterLadevorgang) { ersterLadevorgang = false; ladeTag(); } else render();
+      if (ersterLadevorgang) { ersterLadevorgang = false; ladeTag(); }
+      else if (!listEl.querySelector(".kasse-card.dirty")) render();
+    },
+    // Wird bei jeder Änderung der Monatsabschlüsse aufgerufen
+    setAbschluesse(map) {
+      const vorher = !!gesperrt();
+      abschluesse = map;
+      if (!ersterLadevorgang && !laedt && vorher !== !!gesperrt()) render();
     },
   };
 }

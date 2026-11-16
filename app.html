@@ -52,14 +52,13 @@
     </div>
     <p class="hint-text center" id="tag-label"></p>
 
+    <div class="lock-banner" id="erfassen-gesperrt" style="display:none;">
+      <i data-icon="lock" data-size="18"></i><span class="lock-text"></span>
+    </div>
+    <div class="error-text" id="erfassen-error"></div>
     <p class="hint-text" id="keine-kassen" style="display:none;">Es sind noch keine Kassen angelegt. Lege sie zuerst unter «Kassen» an.</p>
     <div id="erfassen-list"></div>
-
-    <div class="save-bar" id="save-bar" style="display:none;">
-      <div class="error-text" id="erfassen-error"></div>
-      <button class="btn btn-primary" id="erfassen-speichern" style="width:100%;"><i data-icon="save" data-size="16"></i> Tag speichern</button>
-      <p class="hint-text center" style="margin-top:8px;">Alle Felder einer Kasse leer = für diesen Tag kein Eintrag. Die Bankeinzahlung gilt für den ganzen Tag.</p>
-    </div>
+    <p class="hint-text center" id="erfassen-hinweis" style="display:none;">Jede Kasse und die Bank werden einzeln gespeichert. Alle Felder einer Kasse leer + Speichern = Eintrag für diesen Tag löschen.</p>
   </section>
 
   <!-- ÜBERSICHT & DRUCK -->
@@ -91,6 +90,14 @@
       </div>
       <div id="report-body"><p class="hint-text">Zeitraum wählen und «Anzeigen» tippen.</p></div>
       <div class="print-foot" id="report-foot"></div>
+    </div>
+
+    <div class="card form-card no-print abschluss-card">
+      <h3 class="section-title"><i data-icon="lock" data-size="16"></i> Monatsabschluss</h3>
+      <p class="hint-text" style="margin-top:-6px;">Ein abgeschlossener Monat kann nicht mehr geändert werden, bis er wieder geöffnet wird.</p>
+      <div class="field"><label for="abschluss-monat">Monat</label><select id="abschluss-monat"></select></div>
+      <p class="abschluss-status" id="abschluss-status"></p>
+      <button class="btn btn-primary" id="abschluss-btn" style="width:100%;"></button>
     </div>
   </section>
 

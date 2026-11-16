@@ -275,6 +275,18 @@ h3.section-title { font-size: 16px; font-weight: 600; margin: 0 0 14px; }
 .kasse-card { padding: 12px 16px 6px; margin-bottom: 12px; }
 .kc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 15px; }
 .saved-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--m-success); }
+.dirty-badge { font-size: 12px; font-weight: 600; color: var(--m-accent-text); }
+.kasse-card.dirty { border-color: var(--m-accent); }
+.kc-foot { border-top: 1px solid var(--m-border); padding: 10px 0 8px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.kc-foot .error-text { margin: 0; align-self: stretch; }
+.kc-foot .kc-save { min-width: 130px; }
+.betrag-input input:disabled, .ausz-text:disabled { color: var(--m-muted); cursor: not-allowed; }
+.lock-banner {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0 0 14px; padding: 12px 14px;
+  background: var(--m-card-soft); border: 1px solid var(--m-border); border-left: 3px solid var(--m-accent);
+  border-radius: var(--m-radius-md); font-size: 13.5px; color: var(--m-text);
+}
+.lock-banner svg { flex-shrink: 0; margin-top: 1px; color: var(--m-accent-text); }
 .betrag-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 8px 0; border-top: 1px solid var(--m-border); font-size: 14px; color: var(--m-muted);
@@ -313,7 +325,6 @@ h3.section-title { font-size: 16px; font-weight: 600; margin: 0 0 14px; }
 .bank-card .kc-head strong { display: inline-flex; align-items: center; gap: 6px; }
 .btn.is-on { border-color: var(--m-accent); color: var(--m-accent-text); }
 @media (max-width: 420px) { .ausz-row { flex-wrap: wrap; } .ausz-text { flex-basis: 100%; } .ausz-row .betrag-input { flex: 1; width: auto; } }
-.save-bar { position: sticky; bottom: 0; padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(to bottom, transparent, var(--m-bg) 20px); }
 
 /* ==========================================================================
    Übersicht
@@ -351,6 +362,15 @@ h3.section-title { font-size: 16px; font-weight: 600; margin: 0 0 14px; }
 .report-table tr.bank-row td { font-weight: 600; background: var(--m-surface-2); }
 @media (min-width: 900px) { main { max-width: 820px; } }
 
+/* Monatsabschluss */
+.abschluss-card { margin-top: 18px; }
+.abschluss-card .section-title { display: flex; align-items: center; gap: 8px; }
+.abschluss-status { font-size: 13.5px; margin: -4px 0 12px; }
+.abschluss-status .ab-zu { display: inline-flex; align-items: center; gap: 6px; color: var(--m-success); font-weight: 600; }
+.abschluss-status .ab-offen { color: var(--m-muted); }
+.abschluss-info { margin: 0 0 10px; font-size: 12.5px; color: var(--m-muted); display: flex; flex-direction: column; gap: 2px; }
+.abschluss-info .ai-zu { display: inline-flex; align-items: center; gap: 5px; color: var(--m-success); }
+
 /* ==========================================================================
    Druck: nur die Tabelle, hell, A4
    ========================================================================== */
@@ -366,6 +386,8 @@ h3.section-title { font-size: 16px; font-weight: 600; margin: 0 0 14px; }
   .ph-title { font-size: 16pt; font-weight: 700; }
   .ph-sub { font-size: 10pt; color: #333; margin-top: 2px; }
   .print-foot { display: block; margin-top: 10px; font-size: 8pt; color: #555; }
+  .abschluss-info { font-size: 9pt; color: #000; margin-bottom: 8px; }
+  .abschluss-info .ai-zu { color: #000; font-weight: 600; }
   .table-wrap { border: none; border-radius: 0; overflow: visible; }
   .report-table { font-size: 9.5pt; }
   .report-table th, .report-table td { padding: 4px 6px; border-bottom: 1px solid #ccc; }
