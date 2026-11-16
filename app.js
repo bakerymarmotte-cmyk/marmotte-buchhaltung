@@ -145,6 +145,11 @@ async function start() {
     }, fehler("Monatsabschlüsse"));
   }
 
+  // ---------- M.A.R.M.O.T.: Lebenszeichen und verbundene SumUp-Kassen ----------
+  onSnapshot(doc(db, "marmot", "status"), (snap) => {
+    erfassen.setBotStatus(snap.exists() ? snap.data() : null);
+  }, (err) => console.warn("M.A.R.M.O.T.-Status nicht lesbar:", err.message));
+
   // ---------- Einmalige Umstellung: bestehende Daten → Standort Kandersteg ----------
   const umstEl = document.getElementById("umstellung");
   function umstellungPruefen() {

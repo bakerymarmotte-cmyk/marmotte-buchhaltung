@@ -135,7 +135,10 @@ export function initUebersicht(session, { isAdmin }) {
     const mitBank = !gefiltert;          // Bank und Differenz nur bei «Alle Kassen» (Bank gilt für den ganzen Tag)
     const leer = '<td class="r"></td>';
     const vorne = mitKasse ? 2 : 1;      // Spalten vor den Beträgen
-    const bar = (r) => (r.brutto || 0) - (r.sumup || 0) - (r.auszahlungenTotal || 0);
+    // Brutto fehlt (M.A.R.M.O.T. hat nur den Kartenbetrag eingetragen) → Bar nicht berechenbar, zählt 0
+    const ohneBrutto = (r) => r.brutto == null;
+    const bar = (r) => ohneBrutto(r) ? 0 : (r.brutto || 0) - (r.sumup || 0) - (r.auszahlungenTotal || 0);
+    const fehlend = rows.filter(ohneBrutto);
     const diffZelle = (d) => `<td class="r mono ${d < 0 ? "neg" : d > 0 ? "pos" : ""}">${d > 0 ? "+" : ""}${chf(d)}</td>`;
     const hinten = mitBank ? leer + leer : "";
 
@@ -151,10 +154,10 @@ export function initUebersicht(session, { isAdmin }) {
       for (const r of tagRows) {
         html += `<tr class="${ersteZeile ? "day-start" : ""}">
           ${datumZelle()}${mitKasse ? `<td>${esc(r.kasseName)}</td>` : ""}
-          <td class="r mono">${chf(r.brutto)}</td>
+          <td class="r mono">${ohneBrutto(r) ? '<span class="fehlt">fehlt</span>' : chf(r.brutto)}</td>
           <td class="r mono">${chf(r.sumup)}</td>
           <td class="r mono">${r.auszahlungenTotal ? chf(r.auszahlungenTotal) : ""}</td>
-          <td class="r mono strong">${chf(bar(r))}</td>
+          <td class="r mono strong">${ohneBrutto(r) ? "–" : chf(bar(r))}</td>
           ${hinten}
         </tr>`;
         for (const a of r.auszahlungen || []) {
@@ -185,6 +188,7 @@ export function initUebersicht(session, { isAdmin }) {
     const bankSum = Object.values(bank).reduce((s, v) => s + v, 0);
     bodyEl.innerHTML = `
       ${info}
+      ${fehlend.length ? `<p class="fehlt-hinweis">Bei ${fehlend.length} ${fehlend.length === 1 ? "Eintrag" : "Einträgen"} fehlt der Brutto-Umsatz noch (${fehlend.map((r) => `${esc(r.kasseName)} ${deDate(r.datum, false)}`).join(", ")}). Bar und Differenz sind dort unvollständig.</p>` : ""}
       <div class="table-wrap">
       <table class="report-table">
         <thead><tr>

@@ -1,6 +1,6 @@
 import { db } from "./firebase-config.js";
 import {
-  collection, query, where, getDocs, getDoc, doc, setDoc, deleteDoc, serverTimestamp,
+  collection, query, where, getDocs, getDoc, doc, setDoc, addDoc, deleteDoc, onSnapshot, serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { chf, parseChf, toInput, esc, isoDate, deDate } from "./geld.js";
 import { toast } from "./ui.js";
@@ -27,12 +27,18 @@ export function initErfassen(session) {
   let standortId = null;    // gewählter Standort
   let brauchtLaden = false; // Standort gewechselt → Tag neu laden, sobald die Kassen da sind
   let laedt = false;
+  let botStatus = null;     // Status von M.A.R.M.O.T. (live aus app.js)
+  let auftragAbo = null;    // laufender Auftrag «Von SumUp holen»
+  let meldungBis = 0;       // Ergebnis-Meldung so lange stehen lassen
 
   const tagEl = document.getElementById("tag");
   const listEl = document.getElementById("erfassen-list");
   const errorEl = document.getElementById("erfassen-error");
   const lockEl = document.getElementById("erfassen-gesperrt");
   const hinweisEl = document.getElementById("erfassen-hinweis");
+  const sumupBarEl = document.getElementById("sumup-bar");
+  const sumupBtn = document.getElementById("sumup-holen");
+  const sumupStatusEl = document.getElementById("sumup-status");
 
   tagEl.value = isoDate();
   tagEl.max = isoDate();
@@ -99,9 +105,15 @@ export function initErfassen(session) {
       </div>`;
   }
 
-  function statusBadge(gespeichert) {
+  function statusBadge(gespeichert, bruttoFehlt = false) {
+    if (bruttoFehlt) return '<span class="kc-status"><span class="dirty-badge">Brutto fehlt noch</span></span>';
     return `<span class="kc-status">${gespeichert ? '<span class="saved-badge"><i data-icon="circle-check" data-size="14"></i> gespeichert</span>' : ""}</span>`;
   }
+
+  const zeitText = (ts) => {
+    const d = ts?.toDate ? ts.toDate() : null;
+    return d ? d.toLocaleString("de-CH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  };
 
   function fussHtml(zu) {
     if (zu) return "";
@@ -120,11 +132,11 @@ export function initErfassen(session) {
       <div class="card kasse-card" data-kasse="${k.id}">
         <div class="kc-head">
           <strong>${esc(k.name)}</strong>
-          ${statusBadge(!!v)}
+          ${statusBadge(!!v, !!v && v.brutto == null)}
         </div>
         ${FELDER.map((f) => `
           <label class="betrag-row">
-            <span>${f.label}</span>
+            <span>${f.label}${f.key === "sumup" && v?.sumupAm ? `<span class="sumup-info">von SumUp geholt ${zeitText(v.sumupAm)}</span>` : ""}</span>
             <span class="betrag-input"><span class="cur">CHF</span>
               <input type="text" inputmode="decimal" data-feld="${f.key}" value="${toInput(v?.[f.key])}" placeholder="0.00"${zu ? " disabled" : ""}>
             </span>
@@ -201,6 +213,97 @@ export function initErfassen(session) {
 
     listEl.innerHTML = aktive.map(kasseHtml).join("") + (aktive.length ? bankHtml() : "");
     listEl.querySelectorAll(".kasse-card").forEach(karteVorbereiten);
+    sumupLeiste();
+  }
+
+  // ---------- SumUp: «Von SumUp holen» ----------
+  // M.A.R.M.O.T. läuft auf einem PC und meldet sich alle 5 Minuten (marmot/status).
+  const BOT_OFFLINE_NACH = 15 * 60 * 1000;
+  function botOnline() {
+    const t = botStatus?.letzterKontakt?.toDate?.();
+    return !!t && Date.now() - t.getTime() < BOT_OFFLINE_NACH;
+  }
+  function sumupKassenHier() {
+    const ids = botStatus?.sumup?.kassen || [];
+    return kassen.filter((k) => ids.includes(k.id));
+  }
+  function sumupLeiste() {
+    const hier = sumupKassenHier();
+    if (!standortId || !hier.length || gesperrt()) { sumupBarEl.style.display = "none"; return; }
+    sumupBarEl.style.display = "flex";
+    if (auftragAbo || Date.now() < meldungBis) return; // Status-Text gehört gerade dem Auftrag bzw. seinem Ergebnis
+    if (botOnline()) {
+      sumupBtn.disabled = false;
+      sumupStatusEl.textContent = `Verbunden: ${hier.map((k) => k.name).join(", ")}`;
+      sumupStatusEl.className = "sumup-status";
+    } else {
+      sumupBtn.disabled = true;
+      const t = botStatus?.letzterKontakt?.toDate?.();
+      sumupStatusEl.textContent = `M.A.R.M.O.T. nicht erreichbar${t ? ` (zuletzt ${zeitText(botStatus.letzterKontakt)})` : ""} – läuft der PC?`;
+      sumupStatusEl.className = "sumup-status warn";
+    }
+  }
+  setInterval(sumupLeiste, 60 * 1000);
+
+  sumupBtn.addEventListener("click", async () => {
+    if (!standortId || auftragAbo || gesperrt()) return;
+    const datum = aktuellerTag;
+    sumupBtn.disabled = true;
+    sumupStatusEl.className = "sumup-status";
+    sumupStatusEl.textContent = "Auftrag wird gesendet …";
+    try {
+      const ref = await addDoc(collection(db, "sumupAuftraege"), {
+        datum, standortId, status: "offen", erstelltAm: serverTimestamp(), erstelltVon: session.profile.name || "",
+      });
+      const abbruch = setTimeout(() => {
+        if (!auftragAbo) return;
+        auftragAbo(); auftragAbo = null;
+        sumupStatusEl.textContent = "Keine Antwort von M.A.R.M.O.T. Läuft der PC?";
+        sumupStatusEl.className = "sumup-status warn";
+        sumupBtn.disabled = false;
+      }, 90 * 1000);
+      auftragAbo = onSnapshot(ref, (snap) => {
+        const a = snap.data();
+        if (!a) return;
+        if (a.status === "offen") sumupStatusEl.textContent = "Wartet auf M.A.R.M.O.T. …";
+        if (a.status === "laeuft") sumupStatusEl.textContent = "Wird bei SumUp abgefragt …";
+        if (a.status !== "fertig" && a.status !== "fehler") return;
+        clearTimeout(abbruch);
+        auftragAbo(); auftragAbo = null;
+        sumupBtn.disabled = false;
+        sumupErgebnis(datum, a);
+      }, (err) => {
+        console.error(err);
+        clearTimeout(abbruch);
+        if (auftragAbo) { auftragAbo(); auftragAbo = null; }
+        sumupStatusEl.textContent = "Status konnte nicht gelesen werden.";
+        sumupBtn.disabled = false;
+      });
+    } catch (err) {
+      console.error(err);
+      sumupStatusEl.textContent = "Auftrag konnte nicht gesendet werden.";
+      sumupStatusEl.className = "sumup-status warn";
+      sumupBtn.disabled = false;
+    }
+  });
+
+  function sumupErgebnis(datum, a) {
+    const ergebnis = a.ergebnis || {};
+    const texte = Object.entries(ergebnis).map(([id, rp]) => `${kassen.find((k) => k.id === id)?.name || "Kasse"} ${chf(rp)}`);
+    const fehler = a.fehler || [];
+    meldungBis = Date.now() + 3 * 60 * 1000;
+    sumupStatusEl.className = fehler.length ? "sumup-status warn" : "sumup-status ok";
+    sumupStatusEl.textContent = (texte.length ? `SumUp: ${texte.join(" · ")}` : "") + (fehler.length ? `${texte.length ? " – " : ""}${fehler.join(" · ")}` : "");
+    if (datum !== aktuellerTag) return;
+    if (!listEl.querySelector(".kasse-card.dirty")) { ladeTag(); return; }
+    // Ungespeicherte Eingaben: nur die SumUp-Felder nachführen
+    for (const [id, rp] of Object.entries(ergebnis)) {
+      const card = listEl.querySelector(`.kasse-card[data-kasse="${id}"]`);
+      if (!card) continue;
+      card.querySelector('[data-feld="sumup"]').value = toInput(rp);
+      barAnzeigen(card);
+    }
+    toast("SumUp-Werte eingetragen – bitte die geänderten Karten speichern.");
   }
 
   // Nur eine Karte neu zeichnen (die Eingaben in den anderen Karten bleiben stehen)
@@ -383,5 +486,6 @@ export function initErfassen(session) {
       if (aktuellerTag && !laedt && vorher !== !!gesperrt()) render();
     },
     neuLaden() { ladeTag(); },
+    setBotStatus(st) { botStatus = st; sumupLeiste(); },
   };
 }
