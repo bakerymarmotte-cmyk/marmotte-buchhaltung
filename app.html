@@ -37,14 +37,27 @@
 <nav class="main-nav" id="main-nav">
   <button data-tab="erfassen" class="active"><span class="icon"><i data-icon="pencil"></i></span>Erfassen</button>
   <button data-tab="uebersicht"><span class="icon"><i data-icon="printer"></i></span>Übersicht &amp; Druck</button>
-  <button data-tab="kassen"><span class="icon"><i data-icon="wallet"></i></span>Kassen</button>
+  <button data-tab="kassen" class="admin-only"><span class="icon"><i data-icon="wallet"></i></span>Kassen</button>
+  <button data-tab="team" class="admin-only"><span class="icon"><i data-icon="users"></i></span>Team</button>
 </nav>
+</div>
+
+<div class="standort-bar no-print" id="standort-bar">
+  <span class="sb-label">Standort</span>
+  <select id="standort-wahl" style="display:none;" aria-label="Standort wählen"></select>
+  <strong id="standort-name" style="display:none;"></strong>
 </div>
 
 <main>
 
   <!-- ERFASSEN -->
   <section class="tab-panel active" id="panel-erfassen">
+    <div class="card form-card umstellung-card" id="umstellung" style="display:none;">
+      <h3 class="section-title">Umstellung auf Standorte</h3>
+      <p class="hint-text">Die Buchhaltung kennt jetzt Standorte. Alle bisherigen Kassen, Tagesabschlüsse, Bankeinzahlungen und Monatsabschlüsse werden einmalig dem Standort <strong>Kandersteg</strong> zugeordnet.</p>
+      <p class="hint-text" id="umstellung-status"></p>
+      <button class="btn btn-primary" id="umstellung-btn" style="width:100%;">Jetzt Kandersteg zuordnen</button>
+    </div>
     <div class="day-nav">
       <button class="round-btn" id="tag-zurueck" aria-label="Vorheriger Tag"><i data-icon="chevron-left" data-size="18"></i></button>
       <input type="date" id="tag" class="day-input">
@@ -104,8 +117,21 @@
   <!-- KASSEN -->
   <section class="tab-panel" id="panel-kassen">
     <div class="card form-card">
+      <h3 class="section-title" id="standort-form-title">Standorte</h3>
+      <div id="standorte-list"></div>
+      <div class="field" style="margin-top:12px;"><label for="standort-neu-name">Name</label><input type="text" id="standort-neu-name" maxlength="40" placeholder="z.B. Kandergrund"></div>
+      <div class="error-text" id="standort-error"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="standort-abbrechen" type="button" style="display:none;">Abbrechen</button>
+        <button class="btn btn-secondary" id="standort-speichern" type="button">Standort anlegen</button>
+      </div>
+    </div>
+
+    <div class="card form-card">
       <h3 class="section-title" id="kasse-form-title">Neue Kasse</h3>
       <div class="field"><label for="kasse-name">Name</label><input type="text" id="kasse-name" maxlength="40" placeholder="z.B. Laden Kandersteg"></div>
+      <div class="field" id="kasse-standort-feld"><label for="kasse-standort">Standort</label><select id="kasse-standort"></select>
+        <span class="hint-text">Der Standort kann später nicht mehr geändert werden.</span></div>
       <div class="error-text" id="kasse-error"></div>
       <div class="btn-row">
         <button class="btn btn-secondary" id="kasse-abbrechen" type="button" style="display:none;">Abbrechen</button>
@@ -113,6 +139,30 @@
       </div>
     </div>
     <div id="kassen-list"></div>
+  </section>
+
+  <!-- TEAM -->
+  <section class="tab-panel" id="panel-team">
+    <div class="card form-card">
+      <h3 class="section-title">Neues Konto</h3>
+      <div class="field"><label for="emp-name">Name</label><input type="text" id="emp-name" maxlength="60" placeholder="z.B. Kandergrund"></div>
+      <div class="field"><label for="emp-email">E-Mail</label><input type="email" id="emp-email" autocomplete="off"></div>
+      <div class="field"><label for="emp-password">Temporäres Passwort (mind. 8 Zeichen)</label><input type="text" id="emp-password" autocomplete="off"></div>
+      <div class="form-row-2">
+        <div class="field">
+          <label for="emp-rolle">Rolle</label>
+          <select id="emp-rolle">
+            <option value="standort">Standort</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="field" id="emp-standort-feld"><label for="emp-standort">Standort</label><select id="emp-standort"></select></div>
+      </div>
+      <p class="hint-text" style="margin-top:-4px;">Standort: erfassen und Übersicht ansehen, nur für diesen Standort. Admin: alles.<br>Beim ersten Anmelden muss das Passwort geändert werden.</p>
+      <div class="error-text" id="emp-error"></div>
+      <button class="btn btn-primary" id="emp-speichern" type="button" style="width:100%;"><i data-icon="user-plus" data-size="16"></i> Konto erstellen</button>
+    </div>
+    <div id="team-list"></div>
   </section>
 
 </main>

@@ -13,7 +13,7 @@ const FELDER = [
 const MAX_AUSZAHLUNGEN = 30;
 
 // Ein Eintrag pro Kasse und Tag: tagesabschluesse/<kasseId>_<YYYY-MM-DD>
-// Die Bankeinzahlung gibt es einmal pro Tag:  tagesbank/<YYYY-MM-DD>
+// Die Bankeinzahlung gibt es einmal pro Standort und Tag:  tagesbank/<standortId>_<YYYY-MM-DD>
 // Jede Kasse und die Bank haben einen eigenen Speichern-Knopf. So überschreibt
 // niemand die Eingaben einer anderen Kasse, wenn zwei Personen gleichzeitig erfassen.
 const docId = (kasseId, datum) => `${kasseId}_${datum}`;
@@ -24,8 +24,9 @@ export function initErfassen(session) {
   let bankVorhanden = null; // gespeicherte Bankeinzahlung des Tages
   let abschluesse = {};     // "YYYY-MM" → Monatsabschluss (live aus app.js)
   let aktuellerTag = "";    // Tag, der gerade angezeigt wird
+  let standortId = null;    // gewählter Standort
+  let brauchtLaden = false; // Standort gewechselt → Tag neu laden, sobald die Kassen da sind
   let laedt = false;
-  let ersterLadevorgang = true;
 
   const tagEl = document.getElementById("tag");
   const listEl = document.getElementById("erfassen-list");
@@ -64,13 +65,16 @@ export function initErfassen(session) {
     if (!tagEl.value) return;
     aktuellerTag = tagEl.value;
     document.getElementById("tag-label").textContent = deDate(aktuellerTag);
-    laedt = true;
     errorEl.textContent = "";
+    if (!standortId) { vorhanden = {}; bankVorhanden = null; render(); return; }
+    laedt = true;
+    const sid = standortId;
     try {
       const [snap, bankSnap] = await Promise.all([
-        getDocs(query(collection(db, "tagesabschluesse"), where("datum", "==", aktuellerTag))),
-        getDoc(doc(db, "tagesbank", aktuellerTag)),
+        getDocs(query(collection(db, "tagesabschluesse"), where("standortId", "==", sid), where("datum", "==", aktuellerTag))),
+        getDoc(doc(db, "tagesbank", `${sid}_${aktuellerTag}`)),
       ]);
+      if (sid !== standortId) return; // inzwischen anderer Standort
       vorhanden = {};
       snap.docs.forEach((d) => { vorhanden[d.data().kasseId] = d.data(); });
       bankVorhanden = bankSnap.exists() ? bankSnap.data() : null;
@@ -182,7 +186,7 @@ export function initErfassen(session) {
   }
 
   function render() {
-    const aktive = kassen.filter((k) => k.active !== false || vorhanden[k.id]);
+    const aktive = standortId ? kassen.filter((k) => k.active !== false || vorhanden[k.id]) : [];
     document.getElementById("keine-kassen").style.display = aktive.length ? "none" : "block";
     hinweisEl.style.display = aktive.length && !gesperrt() ? "block" : "none";
 
@@ -190,7 +194,7 @@ export function initErfassen(session) {
     if (lock) {
       lockEl.style.display = "flex";
       lockEl.querySelector(".lock-text").textContent =
-        `Dieser Monat ist abgeschlossen${lock.datumText ? ` (am ${lock.datumText})` : ""}. Die Einträge können nicht mehr geändert werden. Wieder öffnen kann man ihn unter «Übersicht & Druck».`;
+        `Dieser Monat ist abgeschlossen${lock.datumText ? ` (am ${lock.datumText})` : ""}. Die Einträge können nicht mehr geändert werden. ${session.profile.role === "admin" ? "Wieder öffnen kann man ihn unter «Übersicht & Druck»." : "Wieder öffnen kann nur der Admin."}`;
     } else {
       lockEl.style.display = "none";
     }
@@ -291,6 +295,7 @@ export function initErfassen(session) {
         const daten = {
           kasseId: kasse.id,
           kasseName: kasse.name,
+          standortId,
           datum,
           ...werte,
           updatedAt: serverTimestamp(),
@@ -328,13 +333,13 @@ export function initErfassen(session) {
 
     btn.disabled = true;
     try {
-      const ref = doc(db, "tagesbank", datum);
+      const ref = doc(db, "tagesbank", `${standortId}_${datum}`);
       if (bank === null) {
         await deleteDoc(ref);
         bankVorhanden = null;
         toast("Bankeinzahlung gelöscht");
       } else {
-        const daten = { datum, bank, updatedAt: serverTimestamp(), updatedBy: session.profile.name || "" };
+        const daten = { datum, standortId, bank, updatedAt: serverTimestamp(), updatedBy: session.profile.name || "" };
         await setDoc(ref, daten);
         bankVorhanden = daten;
         toast(`Bank: ${deDate(datum, false)} gespeichert`);
@@ -357,16 +362,26 @@ export function initErfassen(session) {
   }
 
   return {
+    standortId: () => standortId,
+    // Standort wechseln. false = abgebrochen (ungespeicherte Eingaben)
+    setStandort(sid) {
+      if (sid === standortId) return true;
+      if (standortId && !darfWechseln()) return false;
+      standortId = sid;
+      brauchtLaden = true;
+      return true;
+    },
     setKassen(list) {
       kassen = list;
-      if (ersterLadevorgang) { ersterLadevorgang = false; ladeTag(); }
-      else if (!listEl.querySelector(".kasse-card.dirty")) render();
+      if (brauchtLaden) { brauchtLaden = false; ladeTag(); }
+      else if (!laedt && !listEl.querySelector(".kasse-card.dirty")) render();
     },
     // Wird bei jeder Änderung der Monatsabschlüsse aufgerufen
     setAbschluesse(map) {
       const vorher = !!gesperrt();
       abschluesse = map;
-      if (!ersterLadevorgang && !laedt && vorher !== !!gesperrt()) render();
+      if (aktuellerTag && !laedt && vorher !== !!gesperrt()) render();
     },
+    neuLaden() { ladeTag(); },
   };
 }

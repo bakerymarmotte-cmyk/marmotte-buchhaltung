@@ -13,10 +13,12 @@ const ymVon = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, 
 // Pro Tag: eine Zeile je Kasse mit Bar-Tagesumsatz (Brutto − SumUp − Auszahlungen),
 // danach eine Tageszeile: Bar aller Kassen gegen die Bankeinzahlung, mit Differenz.
 // Dazu: Monatsabschluss (Monat sperren / wieder öffnen).
-export function initUebersicht(session) {
+export function initUebersicht(session, { isAdmin }) {
   let kassen = [];
   let abschluesse = {};   // "YYYY-MM" → Monatsabschluss (live aus app.js)
   let letzteDaten = null; // zuletzt angezeigte Daten, um bei Abschluss-Änderungen neu zu zeichnen
+  let standortId = null;
+  let standortName = "";
   const vonEl = document.getElementById("von");
   const bisEl = document.getElementById("bis");
   const filterEl = document.getElementById("filter-kasse");
@@ -24,6 +26,12 @@ export function initUebersicht(session) {
   const monatEl = document.getElementById("abschluss-monat");
   const abStatusEl = document.getElementById("abschluss-status");
   const abBtn = document.getElementById("abschluss-btn");
+
+  // Standort-Konten: nur ansehen – kein Drucken, kein Monatsabschluss
+  if (!isAdmin) {
+    document.getElementById("drucken").style.display = "none";
+    document.querySelector(".abschluss-card").style.display = "none";
+  }
 
   // ---------- Monatsauswahl für den Abschluss: die letzten 13 Monate ----------
   (function monateFuellen() {
@@ -62,9 +70,14 @@ export function initUebersicht(session) {
       bodyEl.innerHTML = '<p class="error-text">Bitte einen gültigen Zeitraum wählen (Von vor Bis).</p>';
       return false;
     }
+    if (!standortId) {
+      bodyEl.innerHTML = '<p class="hint-text">Es ist noch kein Standort angelegt.</p>';
+      return false;
+    }
     bodyEl.innerHTML = '<p class="hint-text">Lädt …</p>';
     const bereich = (name) => query(
       collection(db, name),
+      where("standortId", "==", standortId),
       where("datum", ">=", vonEl.value),
       where("datum", "<=", bisEl.value),
       orderBy("datum")
@@ -107,7 +120,7 @@ export function initUebersicht(session) {
     const gefiltert = !!filterEl.value;
     const kasseName = gefiltert ? (kassen.find((k) => k.id === filterEl.value)?.name || "") : "Alle Kassen";
     document.getElementById("report-sub").textContent =
-      `${deDate(von, false)} – ${deDate(bis, false)} · ${kasseName}`;
+      `${standortName} · ${deDate(von, false)} – ${deDate(bis, false)} · ${kasseName}`;
     document.getElementById("report-foot").textContent =
       `Erstellt am ${new Date().toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`;
 
@@ -205,6 +218,7 @@ export function initUebersicht(session) {
 
   // ---------- Monatsabschluss ----------
   function abschlussAnzeigen() {
+    if (!isAdmin) return;
     const ym = monatEl.value;
     const a = abschluesse[ym];
     if (a) {
@@ -221,8 +235,9 @@ export function initUebersicht(session) {
 
   abBtn.addEventListener("click", async () => {
     const ym = monatEl.value;
-    const name = monatName(ym);
-    const ref = doc(db, "monatsabschluesse", ym);
+    if (!standortId) return;
+    const name = `${monatName(ym)} (${standortName})`;
+    const ref = doc(db, "monatsabschluesse", `${standortId}_${ym}`);
     abBtn.disabled = true;
     try {
       if (abschluesse[ym]) {
@@ -234,7 +249,7 @@ export function initUebersicht(session) {
         const [y, m] = ym.split("-").map(Number);
         const von = `${ym}-01`;
         const bis = isoDate(new Date(y, m, 0));
-        const bereich = (coll) => query(collection(db, coll), where("datum", ">=", von), where("datum", "<=", bis), orderBy("datum"));
+        const bereich = (coll) => query(collection(db, coll), where("standortId", "==", standortId), where("datum", ">=", von), where("datum", "<=", bis), orderBy("datum"));
         const [snap, bankSnap] = await Promise.all([getDocs(bereich("tagesabschluesse")), getDocs(bereich("tagesbank"))]);
         const tageKasse = new Set(snap.docs.map((d) => d.data().datum)).size;
         const tageBank = bankSnap.docs.length;
@@ -245,7 +260,7 @@ export function initUebersicht(session) {
           `Erfasst: Kassen an ${tageKasse} von ${tg(tageMonat)}, Bankeinzahlung an ${tg(tageBank)}.\n\n` +
           `Danach können die Einträge dieses Monats nicht mehr geändert werden. Wieder öffnen ist jederzeit möglich.`
         )) return;
-        await setDoc(ref, { monat: ym, abgeschlossenAm: serverTimestamp(), abgeschlossenVon: session.profile.name || "" });
+        await setDoc(ref, { monat: ym, standortId, abgeschlossenAm: serverTimestamp(), abgeschlossenVon: session.profile.name || "" });
         toast(`${name} abgeschlossen`);
       }
     } catch (err) {
@@ -257,6 +272,15 @@ export function initUebersicht(session) {
   });
 
   return {
+    setStandort(sid, name) {
+      standortName = name || "";
+      if (sid === standortId) return;
+      standortId = sid;
+      letzteDaten = null;
+      geladen = false;
+      filterEl.value = "";
+      bodyEl.innerHTML = '<p class="hint-text">Zeitraum wählen und «Anzeigen» tippen.</p>';
+    },
     setKassen(list) {
       kassen = list;
       const aktuell = filterEl.value;
