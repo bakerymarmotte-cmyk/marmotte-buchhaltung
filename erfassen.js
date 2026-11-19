@@ -51,6 +51,12 @@ export function initErfassen(session) {
     return confirm("Es gibt Eingaben, die noch nicht gespeichert sind. Trotzdem den Tag wechseln? Die Eingaben gehen dann verloren.");
   }
 
+  // Zurück zum Dashboard (Logo antippen): ebenfalls nachfragen
+  window.addEventListener("marmotte:verlassen", (e) => {
+    if (!listEl.querySelector(".kasse-card.dirty")) return;
+    if (!confirm("Es gibt Eingaben, die noch nicht gespeichert sind. Trotzdem zum Dashboard wechseln? Die Eingaben gehen dann verloren.")) e.preventDefault();
+  });
+
   function verschiebeTag(delta) {
     const [y, m, d] = tagEl.value.split("-").map(Number);
     const neu = new Date(y, m - 1, d + delta);
