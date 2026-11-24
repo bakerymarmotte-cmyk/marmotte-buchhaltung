@@ -223,8 +223,8 @@ export function initErfassen(session) {
   }
 
   // ---------- SumUp: «Von SumUp holen» ----------
-  // M.A.R.M.O.T. läuft auf einem PC und meldet sich alle 5 Minuten (marmot/status).
-  const BOT_OFFLINE_NACH = 15 * 60 * 1000;
+  // M.A.R.M.O.T. läuft auf einem PC und meldet sich alle 15 Minuten (marmot/status).
+  const BOT_OFFLINE_NACH = 30 * 60 * 1000;
   function botOnline() {
     const t = botStatus?.letzterKontakt?.toDate?.();
     return !!t && Date.now() - t.getTime() < BOT_OFFLINE_NACH;
