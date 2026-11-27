@@ -235,6 +235,11 @@ export function initUebersicht(session, { isAdmin }) {
       if (!isAdmin) { abBtn.style.display = "none"; return; }
       abBtn.innerHTML = '<i data-icon="refresh-cw" data-size="16"></i> Monat wieder öffnen';
       abBtn.className = "btn btn-secondary";
+    } else if (!isAdmin && ym >= ymVon(new Date())) {
+      // Standort-Konten: laufender Monat erst ab dem 1. des Folgemonats
+      const [y, m] = ym.split("-").map(Number);
+      abStatusEl.innerHTML = `<span class="ab-offen">Offen – abschliessen ist ab dem ${deDate(isoDate(new Date(y, m, 1)), false)} möglich.</span>`;
+      abBtn.style.display = "none";
     } else {
       abStatusEl.innerHTML = '<span class="ab-offen">Offen – Einträge können noch geändert werden.</span>';
       abBtn.innerHTML = '<i data-icon="lock" data-size="16"></i> Monat abschliessen';
@@ -261,15 +266,34 @@ export function initUebersicht(session, { isAdmin }) {
         const von = `${ym}-01`;
         const bis = isoDate(new Date(y, m, 0));
         const bereich = (coll) => query(collection(db, coll), where("standortId", "==", standortId), where("datum", ">=", von), where("datum", "<=", bis), orderBy("datum"));
+        if (!isAdmin && ym >= ymVon(new Date())) {
+          alert(`${name} kann erst ab dem ${deDate(isoDate(new Date(y, m, 1)), false)} abgeschlossen werden.`);
+          return;
+        }
         const [snap, bankSnap] = await Promise.all([getDocs(bereich("tagesabschluesse")), getDocs(bereich("tagesbank"))]);
-        const tageKasse = new Set(snap.docs.map((d) => d.data().datum)).size;
-        const tageBank = bankSnap.docs.length;
+        const eintraege = snap.docs.map((d) => d.data());
+        const mitKasse = new Set(eintraege.map((r) => r.datum));
+        const mitBank = new Set(bankSnap.docs.map((d) => d.data().datum));
         const tageMonat = new Date(y, m, 0).getDate();
-        const tg = (n) => `${n} ${n === 1 ? "Tag" : "Tagen"}`;
+        const alleTage = Array.from({ length: tageMonat }, (_, i) => `${ym}-${String(i + 1).padStart(2, "0")}`);
+        const tagListe = (tage) => tage.map((t) => `${Number(t.slice(8))}.`).join(", ");
+        const ohneKasse = alleTage.filter((t) => !mitKasse.has(t));
+        const ohneBank = alleTage.filter((t) => !mitBank.has(t));
+        const ohneBrutto = eintraege.filter((r) => r.brutto == null).sort((a, b) => a.datum.localeCompare(b.datum));
+        const bruttoText = ohneBrutto.map((r) => `${r.kasseName} ${Number(r.datum.slice(8))}.`).join(", ");
+
+        // Standort-Konten: nicht abschliessen, solange irgendwo der Brutto-Umsatz fehlt
+        if (!isAdmin && ohneBrutto.length) {
+          alert(`${name} kann noch nicht abgeschlossen werden.\n\nBrutto fehlt noch bei: ${bruttoText}\n\nBitte zuerst unter «Erfassen» nachtragen und speichern.`);
+          return;
+        }
         if (!confirm(
           `${name} abschliessen?\n\n` +
-          `Erfasst: Kassen an ${tageKasse} von ${tg(tageMonat)}, Bankeinzahlung an ${tg(tageBank)}.\n\n` +
-          `Danach können die Einträge dieses Monats nicht mehr geändert werden. Wieder öffnen ist jederzeit möglich.`
+          `Kein Kassen-Eintrag: ${ohneKasse.length ? tagListe(ohneKasse) : "–"}\n` +
+          `Keine Bankeinzahlung: ${ohneBank.length ? tagListe(ohneBank) : "–"}\n` +
+          (ohneBrutto.length ? `Brutto fehlt: ${bruttoText}\n` : "") +
+          `\nBitte prüfen, ob das Ruhetage waren. Danach können die Einträge dieses Monats nicht mehr geändert werden` +
+          (isAdmin ? ". Wieder öffnen ist jederzeit möglich." : " – wieder öffnen kann nur der Admin.")
         )) return;
         await setDoc(ref, { monat: ym, standortId, abgeschlossenAm: serverTimestamp(), abgeschlossenVon: session.profile.name || "" });
         toast(`${name} abgeschlossen`);
