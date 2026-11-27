@@ -410,6 +410,9 @@ body[data-tab="kassen"] .standort-bar, body[data-tab="team"] .standort-bar { dis
   .ph-sub { font-size: 10pt; color: #333; margin-top: 2px; }
   .print-foot { display: block; margin-top: 10px; font-size: 8pt; color: #555; }
   .abschluss-info { font-size: 9pt; color: #000; margin-bottom: 8px; }
+  /* Standort-Konten dürfen nicht drucken: nur ein Hinweis statt der Übersicht */
+  body.kein-druck main { display: none !important; }
+  body.kein-druck::before { content: "Drucken ist nur für den Admin möglich."; display: block; font-size: 14pt; padding: 20mm 0; }
   .abschluss-info .ai-zu { color: #000; font-weight: 600; }
   .table-wrap { border: none; border-radius: 0; overflow: visible; }
   .report-table { font-size: 9.5pt; }

@@ -27,10 +27,11 @@ export function initUebersicht(session, { isAdmin }) {
   const abStatusEl = document.getElementById("abschluss-status");
   const abBtn = document.getElementById("abschluss-btn");
 
-  // Standort-Konten: nur ansehen – kein Drucken, kein Monatsabschluss
+  // Standort-Konten: ansehen und Monat abschliessen – kein Drucken, wieder öffnen nur der Admin.
+  // Auch Strg+P druckt dann nur einen Hinweis (style.css, body.kein-druck).
   if (!isAdmin) {
     document.getElementById("drucken").style.display = "none";
-    document.querySelector(".abschluss-card").style.display = "none";
+    document.body.classList.add("kein-druck");
   }
 
   // ---------- Monatsauswahl für den Abschluss: die letzten 13 Monate ----------
@@ -222,11 +223,13 @@ export function initUebersicht(session, { isAdmin }) {
 
   // ---------- Monatsabschluss ----------
   function abschlussAnzeigen() {
-    if (!isAdmin) return;
     const ym = monatEl.value;
     const a = abschluesse[ym];
+    abBtn.style.display = "";
     if (a) {
-      abStatusEl.innerHTML = `<span class="ab-zu"><i data-icon="lock" data-size="14"></i> Abgeschlossen am ${esc(a.datumText)}${a.abgeschlossenVon ? ` von ${esc(a.abgeschlossenVon)}` : ""}</span>`;
+      abStatusEl.innerHTML = `<span class="ab-zu"><i data-icon="lock" data-size="14"></i> Abgeschlossen am ${esc(a.datumText)}${a.abgeschlossenVon ? ` von ${esc(a.abgeschlossenVon)}` : ""}</span>` +
+        (isAdmin ? "" : '<br><span class="hint-text">Wieder öffnen kann nur der Admin.</span>');
+      if (!isAdmin) { abBtn.style.display = "none"; return; }
       abBtn.innerHTML = '<i data-icon="refresh-cw" data-size="16"></i> Monat wieder öffnen';
       abBtn.className = "btn btn-secondary";
     } else {
@@ -240,6 +243,7 @@ export function initUebersicht(session, { isAdmin }) {
   abBtn.addEventListener("click", async () => {
     const ym = monatEl.value;
     if (!standortId) return;
+    if (abschluesse[ym] && !isAdmin) return; // wieder öffnen nur Admin
     const name = `${monatName(ym)} (${standortName})`;
     const ref = doc(db, "monatsabschluesse", `${standortId}_${ym}`);
     abBtn.disabled = true;
