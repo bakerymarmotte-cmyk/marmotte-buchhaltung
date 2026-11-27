@@ -32,6 +32,9 @@ export function initUebersicht(session, { isAdmin }) {
   if (!isAdmin) {
     document.getElementById("drucken").style.display = "none";
     document.body.classList.add("kein-druck");
+    const tabBtn = document.querySelector('.main-nav [data-tab="uebersicht"]');
+    if (tabBtn) tabBtn.innerHTML = '<span class="icon"><i data-icon="file-text"></i></span>Übersicht';
+    window.MarmotteIcons?.render?.(tabBtn);
   }
 
   // ---------- Monatsauswahl für den Abschluss: die letzten 13 Monate ----------
